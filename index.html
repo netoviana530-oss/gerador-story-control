@@ -93,7 +93,8 @@
   /* HERO — foto do produto em destaque */
   #card .hero{position:relative; margin-top:26px; height:412px; border-radius:26px; overflow:hidden;
     background:#fff; border:1px solid var(--line)}
-  #card .hero .hero-img{position:absolute; inset:0; background:#fff center/contain no-repeat}
+  #card .hero .hero-img{position:absolute; inset:0; background:#fff center/cover no-repeat}
+  #card.fit-contain .hero .hero-img{background-size:contain}
   #card .hero .placeholder{position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
     gap:14px; color:#8a8a90; background:repeating-linear-gradient(45deg,#f3f3f5,#f3f3f5 22px,#ededf0 22px,#ededf0 44px);
     font-family:var(--grotesk); font-weight:500; font-size:30px; text-align:center; padding:0 60px; cursor:pointer}
@@ -110,7 +111,7 @@
 
   /* corpo */
   #card .body{flex:1; display:flex; flex-direction:column; justify-content:center; padding:6px 0}
-  #card .product{font-family:var(--grotesk); font-weight:700; font-size:60px; line-height:1.03; letter-spacing:-.01em; margin:0}
+  #card .product{font-family:var(--grotesk); font-weight:700; font-size:56px; line-height:1.03; letter-spacing:-.01em; margin:0}
   #card .detail{margin-top:24px; display:flex; align-items:flex-start; gap:18px; max-width:900px}
   #card .detail .chk{flex:none; width:46px; height:46px; border-radius:11px; background:rgba(232,100,28,.16); color:var(--live); display:flex; align-items:center; justify-content:center; font-size:26px; font-weight:700}
   #card.type-alert .detail .chk{background:rgba(255,77,61,.18); color:var(--alert)}
@@ -166,7 +167,7 @@
     <div>
       <div class="topline">
         <span class="mark">STORE <b>CONTROL</b></span>
-        <span class="sub">gerador de ofertas · v2.2 ✅ foto</span>
+        <span class="sub">gerador de ofertas · v2.3 ✅ foto grande</span>
       </div>
 
       <div class="stageWrap">
@@ -250,6 +251,10 @@
           <label class="download" for="inPhotoFile" style="margin-top:0">Enviar foto</label>
           <button class="download" id="btnPhotoClear" style="margin-top:0; background:var(--ink-3); color:#CFE0F0">Remover</button>
         </div>
+        <label class="toggle" for="inFill" style="margin-top:10px">
+          <input type="checkbox" id="inFill" checked>
+          <span>Preencher o quadro (foto grande). Desligue se cortar o produto.</span>
+        </label>
       </div>
 
       <!-- campos produto único -->
@@ -297,9 +302,9 @@
       </label>
 
       <div class="sep"></div>
-      <button class="download" id="btnDownload">Baixar imagem (PNG)</button>
+      <button class="download" id="btnDownload">Salvar / Compartilhar imagem</button>
       <button class="download" id="btnCaption" style="background:var(--ink-3); color:#fff">Copiar legenda (com link clicável)</button>
-      <p class="note">Baixe a imagem e poste. Toque em "Copiar legenda" e cole junto — assim o link do site vai <b style="color:#fff">clicável</b> no texto (a imagem sozinha não fica clicável no WhatsApp). Arte em 1080×1080 (WhatsApp, Telegram, Instagram).</p>
+      <p class="note">No iPhone/Android abre a folha de compartilhar: toque em <b style="color:#fff">Salvar Imagem</b> (vai pras Fotos) ou escolha o <b style="color:#fff">WhatsApp</b> pra enviar já com a legenda. No computador, baixa o arquivo. Arte 1080×1080.</p>
     </div>
   </div>
 
@@ -347,7 +352,7 @@
 
   function render(){
     // tipo -> classe + badge
-    card.className = 'type-'+state.type;
+    card.className = 'type-'+state.type + ($('inFill').checked ? '' : ' fit-contain');
     $('cardBadge').textContent = badges[state.type];
 
     // produto
@@ -401,20 +406,28 @@
     document.querySelector('.stageInner').style.height = (1080*scale)+'px';
   }
 
-  // download
+  // salvar / compartilhar imagem
   $('btnDownload').addEventListener('click', function(){
     var prev = card.style.transform;
     card.style.transform = 'none';
     html2canvas(card, {scale:2, backgroundColor:null, width:1080, height:1080, windowWidth:1080, windowHeight:1080})
       .then(function(canvas){
-        var a = document.createElement('a');
+        card.style.transform = prev;
         var name = ($('inProduct').value||'oferta').toLowerCase().replace(/[^a-z0-9]+/g,'-').slice(0,40);
-        a.download = 'store-control-'+name+'.png';
-        a.href = canvas.toDataURL('image/png');
-        a.click();
+        var fname = 'store-control-'+name+'.png';
+        canvas.toBlob(function(blob){
+          if(!blob){ alert('Não consegui gerar a imagem. Tire um print da arte.'); return; }
+          var file = new File([blob], fname, {type:'image/png'});
+          if(navigator.canShare && navigator.canShare({files:[file]})){
+            navigator.share({files:[file], text:buildCaption()}).catch(function(){});
+          } else {
+            var url = URL.createObjectURL(blob);
+            var a = document.createElement('a'); a.download = fname; a.href = url; a.click();
+            setTimeout(function(){ URL.revokeObjectURL(url); }, 4000);
+          }
+        }, 'image/png');
       })
-      .catch(function(){ alert('Não consegui gerar o PNG neste navegador — tire um print da arte.'); })
-      .finally(function(){ card.style.transform = prev; });
+      .catch(function(){ card.style.transform = prev; alert('Não consegui gerar a imagem — tire um print da arte.'); });
   });
 
   // persistência leve (CTA + assinatura)
@@ -423,6 +436,7 @@
       localStorage.setItem('sc_site', $('inSite').value);
       localStorage.setItem('sc_auth', $('inAuth').checked ? '1':'0');
       localStorage.setItem('sc_hideword', $('inHideWord').checked ? '1':'0');
+      localStorage.setItem('sc_fill', $('inFill').checked ? '1':'0');
       if(state.logo) localStorage.setItem('sc_logo', state.logo);
       else localStorage.removeItem('sc_logo');
     }catch(e){}
@@ -432,6 +446,7 @@
       var c = localStorage.getItem('sc_site'); if(c) $('inSite').value = c;
       var a = localStorage.getItem('sc_auth'); if(a!==null) $('inAuth').checked = a==='1';
       var h = localStorage.getItem('sc_hideword'); if(h!==null) $('inHideWord').checked = h==='1';
+      var fl = localStorage.getItem('sc_fill'); if(fl!==null) $('inFill').checked = fl==='1';
       var l = localStorage.getItem('sc_logo'); if(l) state.logo = l;
     }catch(e){}
   }
@@ -473,7 +488,7 @@
     [].forEach.call(this.querySelectorAll('button'), function(x){x.classList.toggle('on', x===b)});
     render();
   });
-  ['inProduct','inOld','inNew','inDetail','inSite','inAuth','inHideWord','k1n','k1p','k2n','k2p','k3n','k3p']
+  ['inProduct','inOld','inNew','inDetail','inSite','inAuth','inHideWord','inFill','k1n','k1p','k2n','k2p','k3n','k3p']
     .forEach(function(id){ $(id).addEventListener('input', render); $(id).addEventListener('change', render); });
   window.addEventListener('resize', fit);
 
