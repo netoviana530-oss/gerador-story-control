@@ -167,7 +167,7 @@
     <div>
       <div class="topline">
         <span class="mark">STORE <b>CONTROL</b></span>
-        <span class="sub">gerador de ofertas · v2.3 ✅ foto grande</span>
+        <span class="sub">gerador de ofertas · v2.4 ✅ salva sozinho</span>
       </div>
 
       <div class="stageWrap">
@@ -304,6 +304,7 @@
       <div class="sep"></div>
       <button class="download" id="btnDownload">Salvar / Compartilhar imagem</button>
       <button class="download" id="btnCaption" style="background:var(--ink-3); color:#fff">Copiar legenda (com link clicável)</button>
+      <button class="download" id="btnClear" style="background:transparent; color:var(--muted); border:1px solid var(--ink-3)">Limpar campos (novo post)</button>
       <p class="note">No iPhone/Android abre a folha de compartilhar: toque em <b style="color:#fff">Salvar Imagem</b> (vai pras Fotos) ou escolha o <b style="color:#fff">WhatsApp</b> pra enviar já com a legenda. No computador, baixa o arquivo. Arte 1080×1080.</p>
     </div>
   </div>
@@ -342,6 +343,20 @@
 
   function siteDisplay(u){
     return (u||'').trim().replace(/^https?:\/\//i,'').replace(/\/+$/,'');
+  }
+
+  function downscaleImage(dataUrl, max, cb){
+    var img = new Image();
+    img.onload = function(){
+      var w=img.width, h=img.height;
+      if(w<=max && h<=max){ cb(dataUrl); return; }
+      var s = Math.min(max/w, max/h);
+      var c=document.createElement('canvas'); c.width=Math.round(w*s); c.height=Math.round(h*s);
+      c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+      try{ cb(c.toDataURL('image/jpeg',0.9)); }catch(e){ cb(dataUrl); }
+    };
+    img.onerror = function(){ cb(dataUrl); };
+    img.src = dataUrl;
   }
 
   function fmtNew(v){
@@ -433,22 +448,38 @@
   // persistência leve (CTA + assinatura)
   function save(){
     try{
-      localStorage.setItem('sc_site', $('inSite').value);
-      localStorage.setItem('sc_auth', $('inAuth').checked ? '1':'0');
-      localStorage.setItem('sc_hideword', $('inHideWord').checked ? '1':'0');
-      localStorage.setItem('sc_fill', $('inFill').checked ? '1':'0');
-      if(state.logo) localStorage.setItem('sc_logo', state.logo);
-      else localStorage.removeItem('sc_logo');
+      var st = {
+        type: state.type,
+        product: $('inProduct').value, old: $('inOld').value, nw: $('inNew').value,
+        detail: $('inDetail').value, site: $('inSite').value,
+        auth: $('inAuth').checked, hideword: $('inHideWord').checked, fill: $('inFill').checked,
+        k: [$('k1n').value,$('k1p').value,$('k2n').value,$('k2p').value,$('k3n').value,$('k3p').value]
+      };
+      localStorage.setItem('sc_state', JSON.stringify(st));
     }catch(e){}
+    try{ if(state.logo) localStorage.setItem('sc_logo', state.logo); else localStorage.removeItem('sc_logo'); }catch(e){}
+    try{ if(state.photo) localStorage.setItem('sc_photo', state.photo); else localStorage.removeItem('sc_photo'); }catch(e){}
   }
   function load(){
     try{
-      var c = localStorage.getItem('sc_site'); if(c) $('inSite').value = c;
-      var a = localStorage.getItem('sc_auth'); if(a!==null) $('inAuth').checked = a==='1';
-      var h = localStorage.getItem('sc_hideword'); if(h!==null) $('inHideWord').checked = h==='1';
-      var fl = localStorage.getItem('sc_fill'); if(fl!==null) $('inFill').checked = fl==='1';
-      var l = localStorage.getItem('sc_logo'); if(l) state.logo = l;
+      var raw = localStorage.getItem('sc_state');
+      if(raw){
+        var st = JSON.parse(raw);
+        if(st.type) state.type = st.type;
+        if(st.product!=null) $('inProduct').value = st.product;
+        if(st.old!=null) $('inOld').value = st.old;
+        if(st.nw!=null) $('inNew').value = st.nw;
+        if(st.detail!=null) $('inDetail').value = st.detail;
+        if(st.site!=null) $('inSite').value = st.site;
+        if(st.auth!=null) $('inAuth').checked = !!st.auth;
+        if(st.hideword!=null) $('inHideWord').checked = !!st.hideword;
+        if(st.fill!=null) $('inFill').checked = !!st.fill;
+        if(st.k){ ['k1n','k1p','k2n','k2p','k3n','k3p'].forEach(function(id,i){ if(st.k[i]!=null) $(id).value = st.k[i]; }); }
+      }
     }catch(e){}
+    try{ var l = localStorage.getItem('sc_logo'); if(l) state.logo = l; }catch(e){}
+    try{ var p = localStorage.getItem('sc_photo'); if(p) state.photo = p; }catch(e){}
+    [].forEach.call(document.querySelectorAll('#typeBtns button'), function(x){ x.classList.toggle('on', x.dataset.type===state.type); });
   }
 
   // legenda pronta pra colar (com link clicável)
@@ -508,12 +539,12 @@
   $('inPhotoFile').addEventListener('change', function(e){
     var f = e.target.files && e.target.files[0]; if(!f) return;
     var r = new FileReader();
-    r.onload = function(){ state.photo = r.result; applyPhoto(); fit(); };
+    r.onload = function(){ downscaleImage(r.result, 1200, function(u){ state.photo = u; applyPhoto(); fit(); save(); }); };
     r.onerror = function(){ alert('Não consegui ler essa foto. Tente um JPG ou PNG.'); };
     r.readAsDataURL(f);
   });
   $('btnPhotoClear').addEventListener('click', function(){
-    state.photo = null; $('inPhotoFile').value=''; applyPhoto(); fit();
+    state.photo = null; $('inPhotoFile').value=''; applyPhoto(); fit(); save();
   });
 
   // copiar legenda com link clicável
@@ -523,6 +554,14 @@
     if(navigator.clipboard && navigator.clipboard.writeText){
       navigator.clipboard.writeText(txt).then(done).catch(function(){ fallbackCopy(txt); done(); });
     } else { fallbackCopy(txt); done(); }
+  });
+
+  // limpar campos (novo post)
+  $('btnClear').addEventListener('click', function(){
+    if(!confirm('Limpar o post atual? (mantém logo e site)')) return;
+    ['inProduct','inOld','inNew','inDetail','k1n','k1p','k2n','k2p','k3n','k3p'].forEach(function(id){ $(id).value=''; });
+    state.photo=null; $('inPhotoFile').value=''; applyPhoto();
+    render();
   });
 
   load();
